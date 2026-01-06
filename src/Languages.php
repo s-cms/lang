@@ -10,7 +10,6 @@ use Throwable;
 
 class Languages
 {
-
     /**
      * Fallback list for RTL languages not supported by Filament
      * Currently only Pashto (ps) is not in Filament's language files
