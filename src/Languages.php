@@ -3,11 +3,25 @@
 namespace SmartCms\Lang;
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use SmartCms\Lang\Models\Language;
+use Throwable;
 
 class Languages
 {
+
+    /**
+     * Fallback list for RTL languages not supported by Filament
+     * Currently only Pashto (ps) is not in Filament's language files
+     */
+    private const RTL_FALLBACK_LANGUAGES = ['ps'];
+
+    /**
+     * Cache for RTL detection results
+     */
+    private static array $rtlCache = [];
+
     public Collection $languages;
 
     public ?Language $currentLanguage;
@@ -106,17 +120,6 @@ class Languages
     }
 
     /**
-     * Fallback list for RTL languages not supported by Filament
-     * Currently only Pashto (ps) is not in Filament's language files
-     */
-    private const RTL_FALLBACK_LANGUAGES = ['ps'];
-
-    /**
-     * Cache for RTL detection results
-     */
-    private static array $rtlCache = [];
-
-    /**
      * Check if language is RTL using Filament translations
      * Falls back to hardcoded list for unsupported languages
      * Results are cached for performance
@@ -153,5 +156,55 @@ class Languages
         self::$rtlCache[$slug] = $isRtl;
 
         return $isRtl;
+    }
+
+    /**
+     * Get merged translations for current and main language
+     * Used for frontend translation loading
+     *
+     * @param  string|null  $currentLang  Current language code (defaults to app locale)
+     * @param  string|null  $mainLang  Main/fallback language code (defaults to main_lang())
+     * @return array Merged translations with fallback to main language
+     */
+    public function getResultTranslations(?string $currentLang = null, ?string $mainLang = null): array
+    {
+        $currentLang = $currentLang ?? current_lang();
+        $mainLang = $mainLang ?? main_lang();
+
+        $mainTranslationsFile = lang_path("{$mainLang}.json");
+        $currentTranslationsFile = lang_path("{$currentLang}.json");
+
+        try {
+            $mainTranslations = File::exists($mainTranslationsFile)
+                ? File::json($mainTranslationsFile)
+                : [];
+        } catch (Throwable $e) {
+            $mainTranslations = [];
+        }
+
+        // If current and main are the same, return main translations
+        if ($mainTranslationsFile === $currentTranslationsFile) {
+            return $mainTranslations;
+        }
+
+        try {
+            $currentTranslations = File::exists($currentTranslationsFile)
+                ? File::json($currentTranslationsFile)
+                : [];
+        } catch (Throwable $e) {
+            $currentTranslations = [];
+        }
+
+        // Merge with main translations as fallback
+        $resultTranslations = array_merge($mainTranslations, $currentTranslations);
+
+        // Replace empty values with main language translation
+        array_walk($resultTranslations, function (&$value, $key) use ($mainTranslations) {
+            if (empty($value)) {
+                $value = $mainTranslations[$key] ?? '';
+            }
+        });
+
+        return $resultTranslations;
     }
 }
